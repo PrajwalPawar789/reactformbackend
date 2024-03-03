@@ -1,68 +1,51 @@
 const express = require('express');
-const multer = require('multer');
-const { Pool } = require('pg');
-const fs = require('fs');
+const cookieParser = require('cookie-parser');
+const jwt = require('jsonwebtoken');
+const cors = require('cors'); // Add CORS middleware
 
 const app = express();
-const port = 3000;
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors({ // Enable CORS for all origins with credentials
+  origin: 'http://localhost:3000',
+  credentials: true
+}));
 
-// PostgreSQL connection pool
-const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'audiofile_database',
-  password: 'root',
-  port: 5432,
+const secretKey = 'your_secret_key';
+
+// Authentication route
+app.post('/login', (req, res) => {
+    const { username, password } = req.body;
+    // Check credentials (replace with your authentication logic)
+    if (username === 'admin' && password === 'admin123') {
+        const token = jwt.sign({ username }, secretKey, { expiresIn: '1m' });
+        res.cookie('jwt', token, { httpOnly: true, secure: true });
+        res.json({ success: true });
+    } else {
+        res.status(401).json({ success: false, message: 'Invalid username or password' });
+    }
 });
 
-// Multer memory storage configuration
-const storage = multer.memoryStorage();
-const upload = multer({ storage: storage });
+// Protected route middleware
+const authenticateToken = (req, res, next) => {
+    const token = req.cookies.jwt;
+    if (!token) return res.sendStatus(401);
+    jwt.verify(token, secretKey, (err, decoded) => {
+        if (err) return res.sendStatus(403);
+        req.user = decoded;
+        next();
+    });
+};
 
-// Serve HTML file with file upload form
-app.get('/', (req, res) => {
-  res.sendFile(__dirname + '/index.html');
+// Dashboard route (protected)
+app.get('/dashboard', authenticateToken, (req, res) => {
+    res.json({ success: true, message: 'Welcome to the dashboard!' });
 });
 
-app.get('/audio', (req, res) => {
-  res.sendFile(__dirname + '/audio.html');
+// Logout route
+app.post('/logout', (req, res) => {
+    res.clearCookie('jwt');
+    res.json({ success: true, message: 'Logout successful' });
 });
 
-// Route to upload audio file
-app.post('/upload', upload.single('audio'), async (req, res) => {
-  try {
-    const fileData = req.file.buffer; // Access the file content from memory buffer
-    const fileName = req.file.originalname;
-
-    // Insert the file info into the database
-    const result = await pool.query('INSERT INTO audio_files (name, file_data) VALUES ($1, $2) RETURNING *', [fileName, fileData]);
-
-    res.send('File uploaded successfully!');
-  } catch (error) {
-    console.error('Error uploading file:', error);
-    res.status(500).send('Error uploading file');
-  }
-});
-
-// Route to fetch all audio files
-app.get('/audio-files', async (req, res) => {
-  try {
-    const client = await pool.connect();
-    const result = await client.query('SELECT name, file_data FROM audio_files');
-    const audioFiles = result.rows.map(row => ({
-      name: row.name,
-      file_data: row.file_data.toString('base64') // Encode file data as base64
-    }));
-    client.release();
-
-    res.json(audioFiles);
-  } catch (error) {
-    console.error('Error fetching audio files:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-
-app.listen(port, () => {
-  console.log(`App listening at http://localhost:${port}`);
-});
+app.listen(5000, () => console.log('Server is running on port 5000'));
