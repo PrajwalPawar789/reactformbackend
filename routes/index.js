@@ -21,7 +21,10 @@ const authenticateToken = (req, res, next) => {
 
 router.post('/login', userController.login);
 router.post('/logout', userController.logout);
+router.post('/fetchLeads', userController.fetchLeads);
 router.get('/search',authenticateToken, userController.search);
+// Add this line in routes/index.js
+
 
 
 module.exports = router;
